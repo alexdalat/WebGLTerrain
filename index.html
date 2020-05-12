@@ -1,9 +1,34 @@
+
+
 <head>
-	<script src="gl-matrix.js" defer></script>
+	<style>
+		html, body {
+			width:  100%;
+			height: 100%;
+			margin: 0;
+		}
+		canvas {
+			padding: 0;
+			margin: auto;
+			display: block;
+			position: absolute;
+			top: 0;
+			bottom: 0;
+			left: 0;
+			right: 0;
+			/*width: 100vw;
+			height: 100vh;*/
+			width: 500px;
+			height: 500px;
+		}
+	</style>
+
+	<script src="lib/gl-matrix.js" defer></script>
+	<script src="lib/perlin.js" defer></script>
 	<script src="shader.js" defer></script>
 	<script src="main.js" defer></script>
 </head>
 
 <body>
-	<canvas width="512" height="512" id="canvas"></canvas>
+	<canvas id="canvas"></canvas>
 </body>
