@@ -1,9 +1,9 @@
 var cubeRotation = 0.0;
 
 
-const grid_size = 15;
-const tile_size = 1;
-const max_y = 5;
+const grid_size = 25;
+const tile_size = 1.2;
+const max_y = 10;
 
 var blocks = [[]];
 
@@ -14,7 +14,7 @@ const BACK = glMatrix.vec3.fromValues(0, 0, -1);
 const OVER = glMatrix.vec3.fromValues(0, 1, 0);
 const UNDER = glMatrix.vec3.fromValues(0, -1, 0);
 
-const BLOCK_NEIGHBORS = [LEFT, OVER, FRONT, BACK, RIGHT];
+const BLOCK_NEIGHBORS = [OVER, RIGHT, LEFT, FRONT, BACK, UNDER];
 
 const BLOCKTYPES = {
 	air: 0,
@@ -56,7 +56,11 @@ function main() {
     }
 	`;
 	  
+	var t0 = performance.now();
 	const buffers = initBuffers(gl);
+	var t1 = performance.now();
+	console.log("Generation time took " + (t1 - t0) + " milliseconds.");
+
 	const shaderProgram = initShaderProgram(gl, vsSource, fsSource);
 	const programInfo = {
 		program: shaderProgram,
@@ -88,24 +92,22 @@ function initBuffers(gl) {
 	const positionBuffer = gl.createBuffer(); // positions
 	gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
 	
-	const positions = [
-		/*// Top face
-		-1.0,  0.0, -1.0,
-		-1.0,  0.0,  1.0,
-		 1.0,  0.0,  1.0,
-		 1.0,  0.0, -1.0,*/
-	];
+	const positions = [];
+	const positionsvec3 = [];
 
 	const indices = [
 		//0,  1,  2,     0,  2, 3,   // top
 	];
 
+	var colors = [];
 	const faceColors = [
 		//[0.0, 1.0, 0.0, 1.0],
 	];
 
 	noise.seed(Math.random());
+	//noise.seed(0.3);
 
+	var t0 = performance.now();
 	for(let x = 0; x < grid_size*2; x++) {
 		blocks.push([]);
 		for(let z = 0; z < grid_size*2; z++) {
@@ -115,51 +117,66 @@ function initBuffers(gl) {
 			}
 		}
 	}
+	var t1 = performance.now();
+	console.log("Array fill time took " + (t1 - t0) + " milliseconds.");
 
+	var t0 = performance.now();
 	for(let x = -grid_size; x < grid_size; x++) {
 		for(let z = -grid_size; z < grid_size; z++) {
 			var nx = x+grid_size;
 			var nz = z+grid_size;
-			var y = Math.round((noise.perlin2(nx*10/100, z*10/100)+1)*max_y);
-			var xyz = glMatrix.vec3.fromValues(nx, y, nz);
-			blocks[nx][nz][y] = BLOCKTYPES.default;
+			var ny = Math.round((noise.perlin2(nx*10/100, z*10/100)+1)*max_y);
+			for(let y = 0; y < ny; y++) {
+				blocks[nx][nz][y] = BLOCKTYPES.default;
+			}
 		}
 	}
-	console.log(blocks) // x z y  format
+	var t1 = performance.now();
+	console.log("Perlin noise generation time took " + (t1 - t0) + " milliseconds.");
+	//console.log(blocks) // x z y  format
 
+	var t0 = performance.now();
 	var idx = 0;
 	for(let x = -grid_size; x < grid_size; x++) {
 		for(let z = -grid_size; z < grid_size; z++) {
-			for(let y = -max_y; y < max_y; y++) {
-				if(blocks[x+grid_size][y+max_y][z+grid_size] === BLOCKTYPES.air)continue;
+			for(let y = max_y*2-1; y > 0; y--) {
+
+				var block = blocks[x+grid_size][z+grid_size][y];
+				if(block === BLOCKTYPES.air)continue;
+				var xyz = glMatrix.vec3.fromValues(x+grid_size, y, z+grid_size);
 
 				for(let f = 0; f < BLOCK_NEIGHBORS.length; f++) { // cube neighbors/faces
-					var xyz = glMatrix.vec3.fromValues(x+grid_size, y+max_y, z+grid_size);
-					var block = blocks[x+grid_size][y+max_y][z+grid_size];
 					var bni = glMatrix.vec3.create(); // block neighbor index
 					glMatrix.vec3.add(bni, xyz, BLOCK_NEIGHBORS[f]); // xyz + block neighbor constant = block neighbor
 
-					if(bni[0] < 0 || bni[1] < 0 || bni[0] >= grid_size*2 || bni[1] >= grid_size*2 || bni[2] > max_y*2 || bni[2] < 0) continue;
-					var nblock = blocks[bni[0]][bni[2]][bni[1]];
-					if(nblock === BLOCKTYPES.air && BLOCK_NEIGHBORS[f] !== OVER && BLOCK_NEIGHBORS[f] !== UNDER)continue; // if y is the same, dont' show side faces
-					addFace(positions, (xyz[0]-grid_size)*tile_size, (xyz[2]-max_y)*tile_size, (xyz[1]-grid_size)*tile_size, BLOCK_NEIGHBORS[f]);
-				
-					indices.push(idx, idx+1, idx+2,   idx, idx+2, idx+3);
-						
-					var c = [xyz[0]/grid_size/tile_size, xyz[1]/max_y/tile_size, xyz[2]/grid_size/tile_size, 1.0];
-					//if(BLOCK_NEIGHBORS[f] === OVER)c = [0.0, 1.0, 0.0, 1.0];
-					faceColors.push(c);
+					if(bni[0] < 0 || bni[1] < 0 || bni[2] < 0 || bni[0] >= grid_size*2 || bni[1] >= max_y*2 || bni[2] >= grid_size*2) continue;
+					var bnblock = blocks[bni[0]][bni[2]][bni[1]];
+					if(bnblock !== BLOCKTYPES.air) continue;
+
+					var fxyz = glMatrix.vec3.fromValues((xyz[0]-grid_size)*tile_size, (xyz[1])*tile_size, (xyz[2]-grid_size)*tile_size);
+					addFace(positions, positionsvec3, indices, fxyz[0], fxyz[1], fxyz[2], BLOCK_NEIGHBORS[f]);
 					
-					idx += 4;
+					var c = [0, 0, 0, 1]
+					c = [1-xyz[1]/max_y/2, xyz[1]/max_y/2, 0.0, 1.0];
+					//c = [0.0, 1.0, 0.0, 1.0];
+					colors = colors.concat(c, c, c, c);
+					
+					idx += 1;
 				}
 			}
 		}
 	}
+	var t1 = performance.now();
+	console.log("Triangle generation time took " + (t1 - t0) + " milliseconds.");
 
+	console.log("positions length: "+positions.length)
+	console.log("positionsvec3 length: "+positionsvec3.length)
+	console.log("indices length: "+indices.length)
 	/*print3Array(positions);
 	console.log("----")
 	print3Array(indices);*/
 	
+	var t0 = performance.now();
 	gl.bufferData(gl.ARRAY_BUFFER,
 				new Float32Array(positions),
 				gl.STATIC_DRAW);
@@ -172,15 +189,19 @@ function initBuffers(gl) {
 		gl.STATIC_DRAW);
 
 
-	var colors = [];
+	/*
 	for (var j = 0; j < faceColors.length; ++j) {
 		var c = faceColors[j];
 		colors = colors.concat(c, c, c, c);
-	}
+	}*/
+	//print3Array(colors)
 
 	const colorBuffer = gl.createBuffer();
 	gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
 	gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(colors), gl.STATIC_DRAW);
+
+	var t1 = performance.now();
+	console.log("Other stuff took " + (t1 - t0) + " milliseconds.");
   
 	return {
 		position: positionBuffer,
@@ -228,10 +249,10 @@ function drawScene(gl, programInfo, buffers, deltaTime) {
 	var cameraViewMatrix = glMatrix.mat4.create();
 	glMatrix.mat4.translate(cameraViewMatrix,     // destination matrix
 		cameraViewMatrix,     // matrix to translate
-		[grid_size*tile_size*2, grid_size*tile_size, grid_size*tile_size*2]);  // amount to translate*/
+		[grid_size*2, grid_size*2, grid_size*2]);  // amount to translate*/
 	//cameraViewMatrix = glMatrix.mat4.invert(cameraViewMatrix, cameraViewMatrix);
 	cameraPosition = glMatrix.vec3.fromValues(cameraViewMatrix[12], cameraViewMatrix[13], cameraViewMatrix[14])
-	lookAt = [modelViewMatrix[12], modelViewMatrix[13], modelViewMatrix[14]];
+	lookAt = [modelViewMatrix[12], modelViewMatrix[13]+max_y*tile_size/2, modelViewMatrix[14]];
 	cameraViewMatrix = glMatrix.mat4.lookAt(cameraViewMatrix, cameraPosition, lookAt, [0, 1, 0]);
   
 	{
@@ -295,40 +316,75 @@ function drawScene(gl, programInfo, buffers, deltaTime) {
 	cubeRotation += deltaTime/2;
 }
 
-function addFace(positions, x, y, z, side) {
+function addFace(positions, positionsvec3, indices, x, y, z, side) {
+	var xyz1;
+	var xyz2;
+	var xyz3;
+	var xyz4;
 	switch(side) {
 		case RIGHT:
-			positions.push(x+tile_size, y, z);
-			positions.push(x+tile_size, y, z+tile_size);
-			positions.push(x+tile_size, y+tile_size, z+tile_size);
-			positions.push(x+tile_size, y+tile_size, z);
-			return true;
+			xyz1 = glMatrix.vec3.fromValues(x+tile_size, y, z);
+			xyz2 = glMatrix.vec3.fromValues(x+tile_size, y, z+tile_size);
+			xyz3 = glMatrix.vec3.fromValues(x+tile_size, y+tile_size, z+tile_size);
+			xyz4 = glMatrix.vec3.fromValues(x+tile_size, y+tile_size, z);
+			break;
 		case LEFT:
-			positions.push(x, y, z);
-			positions.push(x, y+tile_size, z);
-			positions.push(x, y+tile_size, z+tile_size);
-			positions.push(x, y, z+tile_size);
-			return true;
+			xyz1 = glMatrix.vec3.fromValues(x, y, z);
+			xyz2 = glMatrix.vec3.fromValues(x, y+tile_size, z);
+			xyz3 = glMatrix.vec3.fromValues(x, y+tile_size, z+tile_size);
+			xyz4 = glMatrix.vec3.fromValues(x, y, z+tile_size);
+			break;
 		case FRONT:
-			positions.push(x, y, z+tile_size);
-			positions.push(x+tile_size, y, z+tile_size);
-			positions.push(x+tile_size, y+tile_size, z+tile_size);
-			positions.push(x, y+tile_size, z+tile_size);
-			return true;
+			xyz1 = glMatrix.vec3.fromValues(x, y, z+tile_size);
+			xyz2 = glMatrix.vec3.fromValues(x+tile_size, y, z+tile_size);
+			xyz3 = glMatrix.vec3.fromValues(x+tile_size, y+tile_size, z+tile_size);
+			xyz4 = glMatrix.vec3.fromValues(x, y+tile_size, z+tile_size);
+			break;
 		case BACK:
-			positions.push(x, y, z);
-			positions.push(x, y+tile_size, z);
-			positions.push(x+tile_size, y+tile_size, z);
-			positions.push(x+tile_size, y, z);
-			return true;
+			xyz1 = glMatrix.vec3.fromValues(x, y, z);
+			xyz2 = glMatrix.vec3.fromValues(x, y+tile_size, z);
+			xyz3 = glMatrix.vec3.fromValues(x+tile_size, y+tile_size, z);
+			xyz4 = glMatrix.vec3.fromValues(x+tile_size, y, z);
+			break;
 		case OVER:
-			positions.push(x, y+tile_size, z);
-			positions.push(x, y+tile_size, z+tile_size);
-			positions.push(x+tile_size, y+tile_size, z+tile_size);
-			positions.push(x+tile_size, y+tile_size, z);
-			return true;
+			xyz1 = glMatrix.vec3.fromValues(x, y+tile_size, z);
+			xyz2 = glMatrix.vec3.fromValues(x, y+tile_size, z+tile_size);
+			xyz3 = glMatrix.vec3.fromValues(x+tile_size, y+tile_size, z+tile_size);
+			xyz4 = glMatrix.vec3.fromValues(x+tile_size, y+tile_size, z);
+			break;
+		case UNDER:
+			xyz1 = glMatrix.vec3.fromValues(x, y, z);
+			xyz2 = glMatrix.vec3.fromValues(x+tile_size, y, z);
+			xyz3 = glMatrix.vec3.fromValues(x+tile_size, y, z+tile_size);
+			xyz4 = glMatrix.vec3.fromValues(x, y, z+tile_size);
+			break;
 		default:
 			return false;
+	}
+
+	positions.push(xyz1[0], xyz1[1], xyz1[2]); 
+	positions.push(xyz2[0], xyz2[1], xyz2[2]); 
+	positions.push(xyz3[0], xyz3[1], xyz3[2]);
+	positions.push(xyz4[0], xyz4[1], xyz4[2]);
+	var idx = positions.length/3;
+	indices.push(idx, idx+1, idx+2,   idx, idx+2, idx+3);
+
+	/*pushPos(positions, positionsvec3, indices, xyz1[0], xyz1[1], xyz1[2]);
+	pushPos(positions, positionsvec3, indices, xyz2[0], xyz2[1], xyz2[2]);
+	pushPos(positions, positionsvec3, indices, xyz3[0], xyz3[1], xyz3[2]);
+
+	pushPos(positions, positionsvec3, indices, xyz1[0], xyz1[1], xyz1[2]);
+	pushPos(positions, positionsvec3, indices, xyz3[0], xyz3[1], xyz3[2]);
+	pushPos(positions, positionsvec3, indices, xyz4[0], xyz4[1], xyz4[2]);*/
+}
+function pushPos(positions, positionsvec3, indices, x, y, z) {
+	var nidx = isVec3InArray(positionsvec3, [x, y, z]);
+	if(nidx !== -1) { // vector already exists
+		indices.push(nidx);
+	} else { // new vector
+		indices.push(positions.length/3);
+		positions.push(x, y, z);
+		positionsvec3.push([x, y, z]);
 	}
 }
 function print3Array(array) {
@@ -357,4 +413,14 @@ function resize(gl) {
 	  gl.canvas.width  = displayWidth;
 	  gl.canvas.height = displayHeight;
 	}
-  }
+}
+
+function isVec3InArray(array, item) {
+    for (var i = 0; i < array.length; i++) {
+        // This if statement depends on the format of your array
+        if (array[i][0] == item[0] && array[i][1] == item[1] && array[i][2] == item[2]) {
+            return i;   // Found it
+        }
+    }
+    return -1;   // Not found
+}
