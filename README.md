@@ -1,8 +1,9 @@
 # WebGLTerrain
 
 Block terrain generation using WebGL.
+<br><br>
 My first browser program utilizing WebGL to display 3D obects without the aid of third-party libraries.
-<br>
+<br><br>
 Utilizes optimized computations that only visualize tiles "in sight".
 <br>
 
